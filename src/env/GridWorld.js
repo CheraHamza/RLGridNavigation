@@ -75,6 +75,8 @@ export class GridWorld {
 			state: this.getState(),
 			reward,
 			done,
+			steps: this.steps,
+			maxSteps: this.maxSteps,
 		};
 	}
 }
