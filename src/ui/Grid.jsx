@@ -52,6 +52,9 @@ function Grid() {
 	const [steps, setSteps] = useState(0);
 	const [maxSteps, setMaxSteps] = useState(0);
 
+	const [isAutoRunning, setIsAutoRunning] = useState(false);
+	const [currentEpsilon, setCurrentEpsilon] = useState(1.0);
+
 	useEffect(() => {
 		if (envRef.current === null) {
 			envRef.current = new GridWorld();
@@ -65,6 +68,19 @@ function Grid() {
 			});
 		}
 	}, []);
+
+	// Auto-Run Logic
+	useEffect(() => {
+		let timeoutId;
+
+		if (isAutoRunning) {
+			timeoutId = setTimeout(() => {
+				stepFromBackend();
+			}, 50);
+		}
+
+		return () => clearTimeout(timeoutId);
+	}, [isAutoRunning, done, state]);
 
 	function step(action) {
 		if (!envRef.current || done) return;
@@ -93,13 +109,20 @@ function Grid() {
 	}
 
 	async function stepFromBackend() {
-		if (!envRef.current || done) return;
+		if (!envRef.current) return;
+
+		const payload = {
+			position: state.position,
+			target: state.target,
+			reward: reward,
+			done: done,
+		};
 
 		try {
 			const response = await fetch("http://127.0.0.1:8000/act", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(state),
+				body: JSON.stringify(payload),
 			});
 
 			if (!response.ok) {
@@ -108,13 +131,25 @@ function Grid() {
 
 			const data = await response.json();
 
+			if (data.epsilon) {
+				setCurrentEpsilon(data.epsilon);
+			}
+
 			if (!data.action) {
 				throw new Error("No action returned from backend");
+			}
+
+			if (data.action === "stop") {
+				setTimeout(() => {
+					reset();
+				}, 10);
+				return;
 			}
 
 			step(data.action);
 		} catch (error) {
 			console.error("Backend step failed:", error);
+			setIsAutoRunning(false); // Stop auto-run on error
 			alert("Backend unavailable or error occurred. Check server.");
 		}
 	}
@@ -229,6 +264,7 @@ function Grid() {
 
 			<div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
 				<div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+					<div>Epsilon (Randomness): {currentEpsilon.toFixed(3)}</div>
 					<div>Episode: {episode}</div>
 					<div>
 						Moves: {steps} / {maxSteps}
@@ -248,6 +284,12 @@ function Grid() {
 					>
 						<Cpu />
 						Step from Backend
+					</button>
+					<button
+						onClick={() => setIsAutoRunning(!isAutoRunning)}
+						style={{ backgroundColor: isAutoRunning ? "#ffcccb" : "#e0e0e0" }}
+					>
+						{isAutoRunning ? "Stop Auto-Run" : "Start Auto-Run (Backend)"}
 					</button>
 				</div>
 
