@@ -14,9 +14,10 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 
 /**
  * Lightweight health check – used to detect if the backend is reachable.
- * Short timeout (8 s for first probe, callers can override).
+ * Default timeout is 60 s to accommodate Render free-tier cold-starts
+ * (the instance can take 30-60 s to spin up from sleep).
  */
-export async function healthCheck(timeoutMs = 8000) {
+export async function healthCheck(timeoutMs = 60000) {
 	const response = await fetchWithTimeout(`${API_URL}/health`, {}, timeoutMs);
 	if (!response.ok) throw new Error(`Health check failed: ${response.status}`);
 	return response.json();

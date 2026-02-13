@@ -51,9 +51,9 @@ export default function App() {
 	resetRef.current = reset;
 
 	// --- Backend health polling ---
-	const checkBackend = useCallback(async () => {
+	const checkBackend = useCallback(async (timeoutMs) => {
 		try {
-			await healthCheck();
+			await healthCheck(timeoutMs);
 			setBackendStatus("connected");
 			return true;
 		} catch {
@@ -63,57 +63,52 @@ export default function App() {
 
 	useEffect(() => {
 		let cancelled = false;
-		let intervalId;
+		let retryId = null;
+		let failCount = 0;
 
-		async function probe() {
-			const ok = await checkBackend();
-			if (cancelled) return;
-			if (!ok) {
-				// First failure → mark as connecting (backend may be waking up)
-				setBackendStatus((prev) =>
-					prev === "connected" ? "connecting" : prev,
-				);
-				// Retry with back-off style: try every 5 s
-				if (!intervalId) {
-					intervalId = setInterval(async () => {
-						const ok2 = await checkBackend();
-						if (ok2 && intervalId) {
-							clearInterval(intervalId);
-							intervalId = null;
-						}
-						if (!ok2) setBackendStatus("disconnected");
-					}, 5000);
+		function startRetryPolling() {
+			if (retryId) return; // already polling
+			retryId = setInterval(async () => {
+				setBackendStatus("connecting");
+				// Use a 15 s timeout for retries (shorter than initial cold-start)
+				const ok = await checkBackend(15000);
+				if (cancelled) return;
+				if (ok) {
+					clearInterval(retryId);
+					retryId = null;
+					failCount = 0;
+				} else {
+					failCount++;
+					// After 2+ consecutive failures, mark disconnected
+					if (failCount >= 2) setBackendStatus("disconnected");
 				}
-			}
+			}, 10000);
 		}
 
-		// Initial probe on mount
-		probe();
+		// Initial probe — use a long timeout (60 s) for Render cold-starts
+		(async () => {
+			const ok = await checkBackend(60000);
+			if (cancelled) return;
+			if (!ok) {
+				setBackendStatus("connecting");
+				startRetryPolling();
+			}
+		})();
 
-		// Heartbeat: check every 30 s when connected
-		const heartbeat = setInterval(() => {
-			checkBackend().then((ok) => {
-				if (!ok) {
-					setBackendStatus("disconnected");
-					// Start rapid polling
-					if (!intervalId) {
-						intervalId = setInterval(async () => {
-							setBackendStatus("connecting");
-							const ok2 = await checkBackend();
-							if (ok2 && intervalId) {
-								clearInterval(intervalId);
-								intervalId = null;
-							}
-						}, 5000);
-					}
-				}
-			});
+		// Heartbeat: check every 30 s when connected (short 10 s timeout)
+		const heartbeat = setInterval(async () => {
+			const ok = await checkBackend(10000);
+			if (cancelled) return;
+			if (!ok) {
+				setBackendStatus("connecting");
+				startRetryPolling();
+			}
 		}, 30000);
 
 		return () => {
 			cancelled = true;
 			clearInterval(heartbeat);
-			if (intervalId) clearInterval(intervalId);
+			if (retryId) clearInterval(retryId);
 		};
 	}, [checkBackend]);
 
