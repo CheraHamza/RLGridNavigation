@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useGridWorld } from "./hooks/useGridWorld";
-import { fetchAction, trainBatch } from "./api/agent";
+import { fetchAction, trainBatch, resetAgent } from "./api/agent";
 import GridBoard from "./components/GridBoard";
 import Controls from "./components/Controls";
 import StatusPanel from "./components/StatusPanel";
@@ -33,6 +33,7 @@ export default function App() {
 		reset,
 		toggleObstacle,
 		clearObstacles,
+		setObstaclesDirectly,
 	} = useGridWorld();
 
 	const [isAutoRunning, setIsAutoRunning] = useState(false);
@@ -110,8 +111,14 @@ export default function App() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [isAutoRunning, done, state]);
 
-	function handleModelLoaded(newEpsilon) {
+	function handleModelLoaded(newEpsilon, envConfig) {
 		setCurrentEpsilon(newEpsilon);
+		setTrainResult(null);
+		if (envConfig?.obstacles) {
+			setObstaclesDirectly(envConfig.obstacles);
+		} else {
+			setObstaclesDirectly([]);
+		}
 		reset();
 	}
 
@@ -144,6 +151,22 @@ export default function App() {
 			setIsTraining(false);
 		}
 	}
+
+	// Reset agent when obstacles change (environment changed = old Q-table invalid)
+	const prevObstaclesRef = useRef(obstacles);
+	useEffect(() => {
+		const prev = prevObstaclesRef.current;
+		prevObstaclesRef.current = obstacles;
+
+		// Skip on initial render
+		if (prev === obstacles) return;
+
+		// Environment changed — reset the backend agent & training results
+		setTrainResult(null);
+		resetAgent()
+			.then((data) => setCurrentEpsilon(data.epsilon))
+			.catch(() => {});
+	}, [obstacles]);
 
 	if (!state) return null;
 
@@ -281,7 +304,7 @@ export default function App() {
 						)}
 					</div>
 
-					<ModelManager onLoadModel={handleModelLoaded} />
+					<ModelManager onLoadModel={handleModelLoaded} obstacles={obstacles} />
 					<HistoryPanel history={history} />
 				</aside>
 			</main>

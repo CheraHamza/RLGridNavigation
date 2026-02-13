@@ -92,6 +92,13 @@ export function useGridWorld() {
 		}
 	}, []);
 
+	const setObstaclesDirectly = useCallback((newObstacles) => {
+		setObstacles(newObstacles);
+		if (envRef.current) {
+			envRef.current.setObstacles(newObstacles);
+		}
+	}, []);
+
 	return {
 		state,
 		reward,
@@ -108,5 +115,6 @@ export function useGridWorld() {
 		reset,
 		toggleObstacle,
 		clearObstacles,
+		setObstaclesDirectly,
 	};
 }

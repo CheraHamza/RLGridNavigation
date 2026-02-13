@@ -19,11 +19,11 @@ export async function fetchModels() {
 	return response.json();
 }
 
-export async function saveModel(name) {
+export async function saveModel(name, environment = {}) {
 	await fetch(`${API_URL}/models`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ name }),
+		body: JSON.stringify({ name, environment }),
 	});
 }
 
@@ -36,6 +36,14 @@ export async function loadModel(id) {
 
 export async function deleteModel(id) {
 	await fetch(`${API_URL}/models/${id}`, { method: "DELETE" });
+}
+
+export async function resetAgent() {
+	const response = await fetch(`${API_URL}/reset`, { method: "POST" });
+	if (!response.ok) {
+		throw new Error(`Backend error: ${response.status}`);
+	}
+	return response.json();
 }
 
 export async function trainBatch(episodes = 500, obstacles = []) {

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { fetchModels, saveModel, loadModel, deleteModel } from "../api/agent";
 import { Save, Upload, Trash2 } from "lucide-react";
 
-export default function ModelManager({ onLoadModel }) {
+export default function ModelManager({ onLoadModel, obstacles = [] }) {
 	const [models, setModels] = useState([]);
 	const [newModelName, setNewModelName] = useState("");
 	const [loading, setLoading] = useState(false);
@@ -24,7 +24,8 @@ export default function ModelManager({ onLoadModel }) {
 		if (!newModelName.trim()) return;
 		setLoading(true);
 		try {
-			await saveModel(newModelName.trim());
+			const environment = { obstacles };
+			await saveModel(newModelName.trim(), environment);
 			setNewModelName("");
 			await loadModels();
 		} finally {
@@ -37,7 +38,7 @@ export default function ModelManager({ onLoadModel }) {
 		try {
 			const data = await loadModel(id);
 			if (data.status === "loaded") {
-				onLoadModel(data.epsilon);
+				onLoadModel(data.epsilon, data.environment);
 			}
 		} finally {
 			setLoading(false);
@@ -82,6 +83,7 @@ export default function ModelManager({ onLoadModel }) {
 								<span className="model-name">{m.name}</span>
 								<span className="model-meta">
 									ε {m.epsilon.toFixed(3)} ·{" "}
+									{m.environment?.obstacles?.length || 0} walls ·{" "}
 									{new Date(m.created_at).toLocaleDateString()}
 								</span>
 							</div>
