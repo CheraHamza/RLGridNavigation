@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useGridWorld } from "./hooks/useGridWorld";
-import { fetchAction, trainBatch, resetAgent } from "./api/agent";
+import { fetchAction, trainBatch, resetAgent, healthCheck } from "./api/agent";
 import GridBoard from "./components/GridBoard";
 import Controls from "./components/Controls";
 import StatusPanel from "./components/StatusPanel";
@@ -42,10 +42,80 @@ export default function App() {
 	const [trainResult, setTrainResult] = useState(null);
 	const [editMode, setEditMode] = useState(false);
 
+	// Backend connection status: "connected" | "connecting" | "disconnected"
+	const [backendStatus, setBackendStatus] = useState("connecting");
+
 	const stepRef = useRef(step);
 	const resetRef = useRef(reset);
 	stepRef.current = step;
 	resetRef.current = reset;
+
+	// --- Backend health polling ---
+	const checkBackend = useCallback(async () => {
+		try {
+			await healthCheck();
+			setBackendStatus("connected");
+			return true;
+		} catch {
+			return false;
+		}
+	}, []);
+
+	useEffect(() => {
+		let cancelled = false;
+		let intervalId;
+
+		async function probe() {
+			const ok = await checkBackend();
+			if (cancelled) return;
+			if (!ok) {
+				// First failure → mark as connecting (backend may be waking up)
+				setBackendStatus((prev) =>
+					prev === "connected" ? "connecting" : prev,
+				);
+				// Retry with back-off style: try every 5 s
+				if (!intervalId) {
+					intervalId = setInterval(async () => {
+						const ok2 = await checkBackend();
+						if (ok2 && intervalId) {
+							clearInterval(intervalId);
+							intervalId = null;
+						}
+						if (!ok2) setBackendStatus("disconnected");
+					}, 5000);
+				}
+			}
+		}
+
+		// Initial probe on mount
+		probe();
+
+		// Heartbeat: check every 30 s when connected
+		const heartbeat = setInterval(() => {
+			checkBackend().then((ok) => {
+				if (!ok) {
+					setBackendStatus("disconnected");
+					// Start rapid polling
+					if (!intervalId) {
+						intervalId = setInterval(async () => {
+							setBackendStatus("connecting");
+							const ok2 = await checkBackend();
+							if (ok2 && intervalId) {
+								clearInterval(intervalId);
+								intervalId = null;
+							}
+						}, 5000);
+					}
+				}
+			});
+		}, 30000);
+
+		return () => {
+			cancelled = true;
+			clearInterval(heartbeat);
+			if (intervalId) clearInterval(intervalId);
+		};
+	}, [checkBackend]);
 
 	useEffect(() => {
 		initialize();
@@ -175,6 +245,12 @@ export default function App() {
 			<header className="app-header">
 				<h1>RL Grid Navigation</h1>
 				<p className="app-subtitle">Reinforcement Learning Agent Playground</p>
+				<div className={`backend-status backend-status--${backendStatus}`}>
+					<span className="backend-status-dot" />
+					{backendStatus === "connected" && "Backend connected"}
+					{backendStatus === "connecting" && "Waking up backend…"}
+					{backendStatus === "disconnected" && "Backend unreachable"}
+				</div>
 			</header>
 
 			<main className="app-content">
@@ -208,13 +284,18 @@ export default function App() {
 								<RefreshCcw size={16} />
 								Reset Environment
 							</button>
-							<button className="btn btn-primary" onClick={stepFromBackend}>
+							<button
+								className="btn btn-primary"
+								onClick={stepFromBackend}
+								disabled={backendStatus !== "connected"}
+							>
 								<Cpu size={16} />
 								AI Step
 							</button>
 							<button
 								className={`btn ${isAutoRunning ? "btn-danger" : "btn-accent"}`}
 								onClick={() => setIsAutoRunning(!isAutoRunning)}
+								disabled={backendStatus !== "connected"}
 							>
 								{isAutoRunning ? (
 									<>
@@ -259,7 +340,7 @@ export default function App() {
 							<button
 								className="btn btn-accent"
 								onClick={() => handleTurboTrain(100)}
-								disabled={isTraining}
+								disabled={isTraining || backendStatus !== "connected"}
 							>
 								<Zap size={16} />
 								{isTraining ? "Training..." : "100 Episodes"}
@@ -267,7 +348,7 @@ export default function App() {
 							<button
 								className="btn btn-accent"
 								onClick={() => handleTurboTrain(500)}
-								disabled={isTraining}
+								disabled={isTraining || backendStatus !== "connected"}
 							>
 								<Zap size={16} />
 								{isTraining ? "Training..." : "500 Episodes"}
@@ -275,7 +356,7 @@ export default function App() {
 							<button
 								className="btn btn-accent"
 								onClick={() => handleTurboTrain(2000)}
-								disabled={isTraining}
+								disabled={isTraining || backendStatus !== "connected"}
 							>
 								<Zap size={16} />
 								{isTraining ? "Training..." : "2000 Episodes"}
