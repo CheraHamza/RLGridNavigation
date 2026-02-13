@@ -4,16 +4,25 @@ export class GridWorld {
 		width = 10,
 		startingPosition = [0, 0],
 		targetPosition = [8, 8],
+		obstacles = [],
 	) {
 		this.height = height;
 		this.width = width;
 		this.startingPosition = [...startingPosition];
 		this.targetPosition = [...targetPosition];
-		this.currentPosition = startingPosition;
+		this.obstacles = new Set(obstacles.map(([x, y]) => `${x}-${y}`));
 
 		this.currentPosition = [...startingPosition];
 		this.maxSteps = height * width;
 		this.steps = 0;
+	}
+
+	isObstacle(x, y) {
+		return this.obstacles.has(`${x}-${y}`);
+	}
+
+	setObstacles(obstacles) {
+		this.obstacles = new Set(obstacles.map(([x, y]) => `${x}-${y}`));
 	}
 
 	reset() {
@@ -31,27 +40,29 @@ export class GridWorld {
 
 	step(action) {
 		let [x, y] = this.currentPosition;
+		let newX = x;
+		let newY = y;
 		let reward = -0.01;
 		let done = false;
 
 		switch (action) {
 			case "up":
-				if (y > 0) y--;
+				if (y > 0) newY = y - 1;
 				else reward = -0.1;
 				break;
 
 			case "down":
-				if (y < this.height - 1) y++;
+				if (y < this.height - 1) newY = y + 1;
 				else reward = -0.1;
 				break;
 
 			case "left":
-				if (x > 0) x--;
+				if (x > 0) newX = x - 1;
 				else reward = -0.1;
 				break;
 
 			case "right":
-				if (x < this.width - 1) x++;
+				if (x < this.width - 1) newX = x + 1;
 				else reward = -0.1;
 				break;
 
@@ -59,10 +70,17 @@ export class GridWorld {
 				break;
 		}
 
-		this.currentPosition = [x, y];
+		// Check obstacle collision – treat like hitting a wall
+		if (this.isObstacle(newX, newY)) {
+			newX = x;
+			newY = y;
+			reward = -0.1;
+		}
+
+		this.currentPosition = [newX, newY];
 		this.steps++;
 
-		if (x === this.targetPosition[0] && y === this.targetPosition[1]) {
+		if (newX === this.targetPosition[0] && newY === this.targetPosition[1]) {
 			reward = 1.0;
 			done = true;
 		}

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useCallback } from "react";
 import { GridWorld } from "../env/GridWorld";
 
 export function useGridWorld() {
@@ -14,6 +14,7 @@ export function useGridWorld() {
 	const [history, setHistory] = useState([]);
 	const [steps, setSteps] = useState(0);
 	const [maxSteps, setMaxSteps] = useState(0);
+	const [obstacles, setObstacles] = useState([]);
 
 	function initialize() {
 		if (envRef.current) return;
@@ -69,6 +70,28 @@ export function useGridWorld() {
 		setLastAction(null);
 	}
 
+	const toggleObstacle = useCallback((x, y) => {
+		setObstacles((prev) => {
+			const exists = prev.some(([ox, oy]) => ox === x && oy === y);
+			const next = exists
+				? prev.filter(([ox, oy]) => !(ox === x && oy === y))
+				: [...prev, [x, y]];
+
+			// Sync with the environment
+			if (envRef.current) {
+				envRef.current.setObstacles(next);
+			}
+			return next;
+		});
+	}, []);
+
+	const clearObstacles = useCallback(() => {
+		setObstacles([]);
+		if (envRef.current) {
+			envRef.current.setObstacles([]);
+		}
+	}, []);
+
 	return {
 		state,
 		reward,
@@ -79,8 +102,11 @@ export function useGridWorld() {
 		history,
 		steps,
 		maxSteps,
+		obstacles,
 		initialize,
 		step,
 		reset,
+		toggleObstacle,
+		clearObstacles,
 	};
 }
